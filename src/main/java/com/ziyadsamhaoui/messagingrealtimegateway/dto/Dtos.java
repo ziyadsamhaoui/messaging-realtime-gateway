@@ -24,6 +24,7 @@ public final class Dtos {
     ) {
     }
 
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ErrorFrame(
             String timestamp,
