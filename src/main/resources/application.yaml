@@ -1,3 +1,39 @@
+server:
+  port: ${SERVER_PORT:8084}
+  shutdown: graceful
+
 spring:
   application:
     name: messaging-realtime-gateway
+  config:
+    import: "optional:file:.env[.properties]"
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+auth:
+  jwks-uri: ${AUTH_JWKS_URI:http://auth-service:8081/oauth2/jwks}
+  issuer: ${AUTH_ISSUER:http://auth-service:8081}
+
+upstream:
+  chat-service: ${UPSTREAM_CHAT_SERVICE:http://chat-service:8083}
+  user-service: ${UPSTREAM_USER_SERVICE:http://user-service:8082}
+  user-service-internal-token: ${USER_SERVICE_INTERNAL_TOKEN:}
+
+realtime:
+  presence-ttl-seconds: ${PRESENCE_TTL_SECONDS}
+  heartbeat-interval-ms: ${HEARTBEAT_INTERVAL_MS}
+  message-rate-replenish: ${MESSAGE_RATE_REPLENISH}
+  message-rate-burst: ${MESSAGE_RATE_BURST}
+  typing-rate-replenish: ${TYPING_RATE_REPLENISH}
+  typing-rate-burst: ${TYPING_RATE_BURST}
+  connect-timeout-ms: 3000
+  read-timeout-ms: 3000
+
+logging:
+  level:
+    com.ziyadsamhaoui.messagingrealtimegateway: INFO
