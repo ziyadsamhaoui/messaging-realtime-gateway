@@ -2,7 +2,7 @@
 
 **The realtime messaging gateway powering live chat, typing indicators, presence, and STOMP communication across BadrLink.**
 
-[![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.0-6DB33F?style=flat-square\&logo=springboot\&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.1-6DB33F?style=flat-square\&logo=springboot\&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Java](https://img.shields.io/badge/Java-21-ED8B00?style=flat-square\&logo=openjdk\&logoColor=white)](https://www.oracle.com/java/)
 [![WebSocket](https://img.shields.io/badge/WebSocket-STOMP-010101?style=flat-square\&logo=websocket\&logoColor=white)](https://stomp.github.io/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square\&logo=redis\&logoColor=white)](https://redis.io/)
@@ -79,6 +79,8 @@ The Realtime Gateway sits behind the API Gateway and communicates with Chat and 
 ```
 
 The service has **no database**. Redis is used for shared presence state, distributed rate limits, and realtime event fan-out.
+
+Centralized references: [`/docs/API_ENDPOINTS.md`](../docs/API_ENDPOINTS.md), [`/docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md), [`/docs/INCOHERENCES_AND_RESOLUTIONS.md`](../docs/INCOHERENCES_AND_RESOLUTIONS.md).
 
 ---
 
@@ -162,7 +164,7 @@ Authorization:Bearer <jwt>
 
 ```
 
-The JWT is validated against the Auth Service JWKS endpoint.
+The JWT is validated against Auth's public keys at `AUTH_JWKS_URI` (`/oauth2/jwks`); the signature, expiry, issuer, and `aud` (default `messaging-api`) are all enforced. `AUTH_ISSUER` must equal Auth's `JWT_ISSUER`. See `docs/adr/0010-rs256-access-token-signing.md` and `0011-canonical-jwks-path.md`.
 
 The token's `sub` becomes the authenticated STOMP principal.
 
@@ -251,7 +253,7 @@ On disconnect, the service also sends:
 PATCH /internal/users/{id}/last-seen
 ```
 
-to the User Service using the internal service token.
+to the User Service using the internal service token (`X-Internal-Token`, value of `USER_SERVICE_INTERNAL_TOKEN` — must equal the User service's `INTERNAL_HMAC_SECRET`).
 
 Presence is best-effort. Redis failures do not disconnect users or prevent message sending when the message rate-limit check itself is still available.
 
@@ -345,6 +347,8 @@ Examples include:
 | HTTP connect timeout  | 3 seconds                                                               |
 | HTTP read timeout     | 3 seconds                                                               |
 
+> **Roadmap note:** a planned successor consumes Chat's `MESSAGE_SENT` events on Kafka for delivery instead of the synchronous POST-and-broadcast relay (`/docs/INCOHERENCES_AND_RESOLUTIONS.md` INC-09). Until that lands, do not run a second fan-out source — messages would be broadcast twice.
+
 The service uses graceful shutdown with a 20-second shutdown phase timeout.
 
 ---
@@ -374,6 +378,7 @@ REDIS_PORT=6379
 
 AUTH_JWKS_URI=http://localhost:8081/oauth2/jwks
 AUTH_ISSUER=http://localhost:8081
+AUTH_AUDIENCE=messaging-api
 
 UPSTREAM_CHAT_SERVICE=http://localhost:8083
 UPSTREAM_USER_SERVICE=http://localhost:8082
@@ -516,9 +521,5 @@ BadrLink is split into several independent services:
 | User Service     | `8082` | Profiles, blocks, connections                        |
 | Chat Service     | `8083` | Rooms, participants, messages                        |
 | Realtime Gateway | `8084` | STOMP, WebSocket, realtime delivery                  |
+| Notification     | `8085` | In-app notifications, Web Push                       |
 | Redis            | `6379` | Shared realtime state and messaging                  |
-
-```
-
-This keeps the realtime gateway README consistent with the Auth/User/Chat READMEs while making the WebSocket-specific flow and Redis behavior clear.
-```
