@@ -28,6 +28,8 @@ public final class TestTokens {
 
     public static final String ISSUER = "http://localhost:8081";
 
+    public static final String AUDIENCE = "messaging-api";
+
     public final KeyPair keyPair;
     public final String keyId = "test-key-1";
     public final JwtDecoder decoder;
@@ -64,6 +66,7 @@ public final class TestTokens {
                     new JWTClaimsSet.Builder()
                             .subject(subject)
                             .issuer(ISSUER)
+                            .audience(AUDIENCE)
                             .expirationTime(java.util.Date.from(expiry))
                             .issueTime(java.util.Date.from(Instant.now()))
                             .build());
@@ -84,6 +87,7 @@ public final class TestTokens {
                     new JWSHeader.Builder(JWSAlgorithm.RS256).type(JOSEObjectType.JWT).keyID(keyId).build(),
                     new JWTClaimsSet.Builder()
                             .issuer(ISSUER)
+                            .audience(AUDIENCE)
                             .expirationTime(java.util.Date.from(Instant.now().plusSeconds(600)))
                             .build());
             jwt.sign(signer);

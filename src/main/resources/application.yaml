@@ -16,8 +16,9 @@ spring:
     timeout-per-shutdown-phase: 20s
 
 auth:
-  jwks-uri: ${AUTH_JWKS_URI:http://auth-service:8081/oauth2/jwks}
-  issuer: ${AUTH_ISSUER:http://auth-service:8081}
+  jwks-uri: ${AUTH_JWKS_URI:http://messaging-auth-service:8081/oauth2/jwks}
+  issuer: ${AUTH_ISSUER:http://messaging-auth-service:8081}
+  audience: ${AUTH_AUDIENCE:messaging-api}
 
 upstream:
   chat-service: ${UPSTREAM_CHAT_SERVICE:http://chat-service:8083}
