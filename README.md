@@ -6,6 +6,7 @@
 [![Java](https://img.shields.io/badge/Java-21-ED8B00?style=flat-square\&logo=openjdk\&logoColor=white)](https://www.oracle.com/java/)
 [![WebSocket](https://img.shields.io/badge/WebSocket-STOMP-010101?style=flat-square\&logo=websocket\&logoColor=white)](https://stomp.github.io/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square\&logo=redis\&logoColor=white)](https://redis.io/)
+[![Kafka](https://img.shields.io/badge/Kafka-Events-231F20?style=flat-square\&logo=apachekafka\&logoColor=white)](https://kafka.apache.org/)
 [![Bucket4j](https://img.shields.io/badge/Bucket4j-Rate_Limiting-6C757D?style=flat-square)](https://bucket4j.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square\&logo=docker\&logoColor=white)](https://www.docker.com/)
 [![Maven](https://img.shields.io/badge/Maven-Build-C71A36?style=flat-square\&logo=apachemaven\&logoColor=white)](https://maven.apache.org/)
@@ -24,7 +25,8 @@ This service handles:
 * Realtime message delivery
 * Typing indicators
 * User presence tracking
-* Distributed message and typing fan-out through Redis
+* Kafka-backed, deduplicated message fan-out (`badrlink.chat.message.v1`)
+* Distributed typing fan-out through Redis
 * Per-user realtime rate limiting
 * Last-seen updates after disconnects
 
@@ -34,7 +36,7 @@ It **does not store messages or room data**. Chat remains responsible for persis
 
 ## Architecture
 
-The Realtime Gateway sits behind the API Gateway and communicates with Chat and User when needed.
+The Realtime Gateway sits behind the API Gateway, persists sends through Chat, and consumes Chat's `MESSAGE_SENT` events from Kafka to broadcast to local subscribers.
 
 ```text
                          ┌─────────────────────┐
@@ -57,28 +59,31 @@ The Realtime Gateway sits behind the API Gateway and communicates with Chat and 
                          │ STOMP               │
                          │ Authentication      │
                          │ Room subscriptions  │
-                         │ Message relay       │
+                         │ Message persistence │
+                         │ Kafka MESSAGE_SENT  │
+                         │ Dedup + broadcast   │
                          │ Typing indicators   │
                          │ Presence            │
-                         └───────┬───────┬─────┘
-                                 │       │
-                    ┌────────────┘       └────────────┐
-                    ▼                                 ▼
-          ┌─────────────────┐                ┌─────────────────┐
-          │   Chat Service  │                │   User Service  │
-          │      :8083      │                │      :8082      │
-          └─────────────────┘                └─────────────────┘
-                                      
+                         └──┬────────┬─────┬───┘
+                            │        │     │
+              ┌─────────────┘        │     └────────────┐
+              ▼                      ▼                  ▼
+    ┌─────────────────┐    ┌─────────────────┐  ┌─────────────────┐
+    │   Chat Service  │    │   User Service  │  │      Kafka      │
+    │      :8083      │    │      :8082      │  │      :9092      │
+    └─────────────────┘    └─────────────────┘  └─────────────────┘
+
                          ┌─────────────────────┐
                          │       Redis         │
                          ├─────────────────────┤
                          │ Presence            │
-                         │ Pub/Sub             │
+                         │ Typing pub/sub      │
+                         │ Message dedup keys  │
                          │ Rate limiting       │
                          └─────────────────────┘
 ```
 
-The service has **no database**. Redis is used for shared presence state, distributed rate limits, and realtime event fan-out.
+The service has **no database**. Redis is used for shared presence state, distributed rate limits, message deduplication claims, and typing pub/sub; Kafka carries message fan-out.
 
 Centralized references: [`/docs/API_ENDPOINTS.md`](../docs/API_ENDPOINTS.md), [`/docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md), [`/docs/INCOHERENCES_AND_RESOLUTIONS.md`](../docs/INCOHERENCES_AND_RESOLUTIONS.md).
 
@@ -88,7 +93,7 @@ Centralized references: [`/docs/API_ENDPOINTS.md`](../docs/API_ENDPOINTS.md), [`
 
 ### Message
 
-A message follows this path:
+Persistence and broadcast are decoupled:
 
 ```text
 Client
@@ -97,25 +102,26 @@ Client
   ▼
 Realtime Gateway
   │
-  │ rate limit
+  │ rate limit (fail closed)
   ▼
 Chat Service
   │
   │ POST /rooms/{roomId}/messages
   ▼
-Message persisted
+Message persisted + MESSAGE_SENT emitted
   │
   ▼
-Redis Pub/Sub
+Kafka badrlink.chat.message.v1
   │
   ▼
-Realtime Gateway instances
+Realtime Gateway consumer (group realtime-gateway)
   │
+  │ SET message_dedup:{messageId} 1 NX EX 60
   ▼
 /topic/rooms/{roomId}
 ```
 
-The sender's `Authorization` token is forwarded to Chat. The Realtime Gateway does not create or forward a separate sender identity.
+The sender's `Authorization` token is forwarded to Chat. The Realtime Gateway does not create or forward a separate sender identity. Chat's validation, membership, block, and mute errors still reach the sender as STOMP error frames.
 
 ### Typing
 
@@ -211,16 +217,14 @@ The typing topic uses the same room membership check as the message topic.
 
 Realtime actions use distributed rate limits backed by Redis.
 
-| Action   | Rate | Burst | Redis key             |
-| -------- | ---- | ----- | --------------------- |
-| Messages | 10/s | 20    | `msgrate:{userId}`    |
-| Typing   | 5/s  | 10    | `typingrate:{userId}` |
+| Action   | Rate | Burst |
+| -------- | ---- | ----- |
+| Messages | 10/s | 20    |
+| Typing   | 5/s  | 10    |
 
 Message sends **fail closed** when Redis is unavailable. This prevents messages from bypassing the configured rate limit.
 
 Typing events **fail open** because they are temporary and can safely be dropped.
-
-Over-budget typing events are silently discarded without sending an error frame.
 
 ---
 
@@ -261,37 +265,6 @@ Presence is best-effort. Redis failures do not disconnect users or prevent messa
 
 ---
 
-## Redis Pub/Sub
-
-Redis allows multiple Realtime Gateway instances to share realtime events.
-
-```text
-Instance A
-    │
-    │ publish
-    ▼
-Redis
-    │
-    ├───────────────┐
-    ▼               ▼
-Instance A       Instance B
-    │               │
-    ▼               ▼
-Local clients    Local clients
-```
-
-Two channels are used:
-
-```text
-room:{roomId}:messages
-room:{roomId}:typing
-```
-
-This allows a message sent through one instance to reach subscribers connected to another instance.
-
-No sticky-session requirement is needed for message fan-out.
-
----
 
 ## Error Handling
 
@@ -335,24 +308,6 @@ Examples include:
 
 ---
 
-## Resilience
-
-| Dependency            | Behaviour                                                               |
-| --------------------- | ----------------------------------------------------------------------- |
-| Chat unavailable      | Message sends and room subscriptions fail                               |
-| User unavailable      | Presence and last-seen updates degrade silently                         |
-| Redis unavailable     | Message rate checks fail closed; typing and presence degrade gracefully |
-| Message POST fails    | Never retried to avoid duplicate messages                               |
-| Last-seen PATCH fails | Retried once asynchronously                                             |
-| HTTP connect timeout  | 3 seconds                                                               |
-| HTTP read timeout     | 3 seconds                                                               |
-
-> **Roadmap note:** a planned successor consumes Chat's `MESSAGE_SENT` events on Kafka for delivery instead of the synchronous POST-and-broadcast relay (`/docs/INCOHERENCES_AND_RESOLUTIONS.md` INC-09). Until that lands, do not run a second fan-out source — messages would be broadcast twice.
-
-The service uses graceful shutdown with a 20-second shutdown phase timeout.
-
----
-
 ## Getting Started
 
 ### Requirements
@@ -360,6 +315,7 @@ The service uses graceful shutdown with a 20-second shutdown phase timeout.
 * Java 21
 * Docker
 * Redis 7
+* Kafka (shared broker; `KAFKA_BOOTSTRAP_SERVERS`)
 * Maven (or the included Maven Wrapper)
 
 ### Environment Configuration
@@ -376,6 +332,9 @@ Configure the required services:
 REDIS_HOST=localhost
 REDIS_PORT=6379
 
+KAFKA_ENABLED=true
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+
 AUTH_JWKS_URI=http://localhost:8081/oauth2/jwks
 AUTH_ISSUER=http://localhost:8081
 AUTH_AUDIENCE=messaging-api
@@ -388,13 +347,14 @@ USER_SERVICE_INTERNAL_TOKEN=<token>
 
 See `.env.example` for the complete configuration.
 
-> **Note:** `.env` contains environment-specific values and should not be committed.
 
 ### Start Redis
 
 ```bash
 docker run -d --name badrlink-redis -p 6379:6379 redis:7-alpine
 ```
+
+Start a Kafka broker using any one service's compose file (only one is needed per deployment).
 
 ### Run the service
 
@@ -438,7 +398,7 @@ To build without tests:
 ./mvnw -B clean test
 ```
 
-Integration tests require Docker because they use Testcontainers.
+Integration tests require Docker because they use Testcontainers. The unit tests (`RedisChannelsTest`, `MessageFanOutServiceTest`, `RealtimeMessageConsumerTest`) run without Docker.
 
 ---
 
@@ -451,11 +411,12 @@ The main test areas include:
 * STOMP authentication
 * JWT validation
 * Room subscription authorization
-* Message relay
+* Message relay and error mapping
+* Kafka `MESSAGE_SENT` dispatch
+* Distributed message deduplication
 * Rate limiting
 * Presence lifecycle
-* Multi-instance Redis fan-out
-* Redis failure handling
+* Multi-instance Redis failure handling
 * Redis channel mapping
 
 The test setup also generates in-memory RS256 tokens and serves a test JWKS endpoint.
@@ -491,11 +452,10 @@ The current realtime gateway provides:
 * STOMP messaging over WebSocket and SockJS
 * Independent JWT validation
 * Room subscription authorization through Chat
-* Realtime message delivery
+* Kafka-backed, deduplicated message delivery
 * Typing indicators
 * Redis-based presence
 * Distributed rate limiting
-* Redis-based multi-instance fan-out
 * Last-seen updates
 
 It currently does **not** provide:
@@ -522,4 +482,5 @@ BadrLink is split into several independent services:
 | Chat Service     | `8083` | Rooms, participants, messages                        |
 | Realtime Gateway | `8084` | STOMP, WebSocket, realtime delivery                  |
 | Notification     | `8085` | In-app notifications, Web Push                       |
-| Redis            | `6379` | Shared realtime state and messaging                  |
+| Kafka            | `9092` | Event backbone (message fan-out)                     |
+| Redis            | `6379` | Shared realtime state and typing transport           |
