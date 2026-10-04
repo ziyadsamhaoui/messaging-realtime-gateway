@@ -84,6 +84,22 @@ class StompSubscriptionAuthorizationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void userCanSubscribeToOwnUserTopic() {
+        try (StompTestClient client = connectedClient("user-1")) {
+            client.subscribeAndDiscard("/topic/users/user-1");
+        }
+    }
+
+    @Test
+    void userCannotSubscribeToAnotherUsersTopic() throws Exception {
+        try (StompTestClient client = connectedClient("user-2")) {
+            client.subscribeAndDiscard("/topic/users/user-1");
+            assertThat(client.awaitError(5)).isTrue();
+            assertThat(client.connectError()).contains("another user's topic");
+        }
+    }
+
+    @Test
     void refusalHappensBeforeAnyDeliveryIsRegistered() throws Exception {
         scriptChat("GET /rooms/42",
                 () -> chatError(403, "ROOM_ACCESS_DENIED", "denied"));

@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,7 +18,10 @@ class MultiInstanceFanoutTest extends AbstractIntegrationTest {
     @Autowired
     MessageFanOutService fanOutOnInstanceA;
 
-    private static StompTestClient subscriberOn(int port, String userId) throws InterruptedException {
+    @Autowired
+    ObjectMapper objectMapper;
+
+    private StompTestClient subscriberOn(int port, String userId) throws InterruptedException {
         StompTestClient client = new StompTestClient();
         String token = TOKENS.mint(userId);
         boolean connected = client.connect("ws://localhost:" + port + "/ws/websocket",
@@ -25,6 +30,14 @@ class MultiInstanceFanoutTest extends AbstractIntegrationTest {
         client.subscribe("/topic/rooms/42");
         Thread.sleep(250);
         return client;
+    }
+
+    private JsonNode payload(String json) {
+        try {
+            return objectMapper.readTree(json);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(e);
+        }
     }
 
     @Test
@@ -49,14 +62,17 @@ class MultiInstanceFanoutTest extends AbstractIntegrationTest {
             StompTestClient subscriberA = subscriberOn(portA, "viewer-a");
             StompTestClient subscriberB = subscriberOn(portB, "viewer-b");
 
-            fanOutOnInstanceA.fanOut("cluster-event-1", "42", "sender", "TEXT", "hello from A");
+            fanOutOnInstanceA.fanOut("cluster-event-1", "MESSAGE_SENT",
+                    payload("{\"messageId\":\"m1\",\"roomId\":\"42\",\"senderId\":\"s\",\"content\":\"from A\"}"));
             assertThat(subscriberA.nextFrame("/topic/rooms/42", 10)).isNotNull();
             assertThat(subscriberB.nextFrame("/topic/rooms/42", 1)).isNull();
 
-            fanOutOnInstanceB.fanOut("cluster-event-1", "42", "sender", "TEXT", "redelivered on B");
+            fanOutOnInstanceB.fanOut("cluster-event-1", "MESSAGE_SENT",
+                    payload("{\"messageId\":\"m1\",\"roomId\":\"42\",\"senderId\":\"s\",\"content\":\"redelivered\"}"));
             assertThat(subscriberB.nextFrame("/topic/rooms/42", 1)).isNull();
 
-            fanOutOnInstanceB.fanOut("cluster-event-2", "42", "sender", "TEXT", "hello from B");
+            fanOutOnInstanceB.fanOut("cluster-event-2", "MESSAGE_SENT",
+                    payload("{\"messageId\":\"m2\",\"roomId\":\"42\",\"senderId\":\"s\",\"content\":\"from B\"}"));
             assertThat(subscriberB.nextFrame("/topic/rooms/42", 10)).isNotNull();
 
             subscriberA.close();

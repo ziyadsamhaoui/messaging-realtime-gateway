@@ -23,6 +23,8 @@ public class StompSubscriptionInterceptor implements ChannelInterceptor {
 
     static final Pattern ROOM_TOPIC_PATTERN = Pattern.compile("^/topic/rooms/([^/]+)(/typing)?$");
 
+    static final Pattern USER_TOPIC_PATTERN = Pattern.compile("^/topic/users/([^/]+)$");
+
     private static final Logger log = LoggerFactory.getLogger(StompSubscriptionInterceptor.class);
 
     private final ChatServiceClient chatServiceClient;
@@ -46,6 +48,17 @@ public class StompSubscriptionInterceptor implements ChannelInterceptor {
         }
 
         if (destination != null && destination.startsWith("/user/")) {
+            return message;
+        }
+
+        Matcher userMatcher = destination == null ? null : USER_TOPIC_PATTERN.matcher(destination);
+        if (userMatcher != null && userMatcher.matches()) {
+            if (!userMatcher.group(1).equals(user.getName())) {
+                log.warn("Subscription denied (session {}, user {}): cannot subscribe to another user's topic {}",
+                        accessor.getSessionId(), user.getName(), destination);
+                throw new ChatServiceException(403, "ROOM_ACCESS_DENIED",
+                        "Cannot subscribe to another user's topic: " + destination);
+            }
             return message;
         }
 

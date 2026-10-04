@@ -14,9 +14,11 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnProperty(prefix = "badrlink.kafka", name = "enabled", havingValue = "true")
 public class RealtimeMessageConsumer {
 
-    public static final String TOPIC = "badrlink.chat.message.v1";
+    public static final String MESSAGE_TOPIC = "badrlink.chat.message.v1";
+    public static final String ROOM_TOPIC = "badrlink.chat.room.v1";
+    public static final String INVITATION_TOPIC = "badrlink.chat.invitation.v1";
+    public static final String PROFILE_TOPIC = "badrlink.user.profile.v1";
     public static final String GROUP_ID = "realtime-gateway";
-    public static final String MESSAGE_SENT = "MESSAGE_SENT";
 
     private static final Logger log = LoggerFactory.getLogger(RealtimeMessageConsumer.class);
 
@@ -28,33 +30,24 @@ public class RealtimeMessageConsumer {
         this.objectMapper = objectMapper;
     }
 
-    @KafkaListener(topics = TOPIC, groupId = GROUP_ID)
+    @KafkaListener(
+            topics = {MESSAGE_TOPIC, ROOM_TOPIC, INVITATION_TOPIC, PROFILE_TOPIC},
+            groupId = GROUP_ID)
     public void onMessage(ConsumerRecord<String, String> record) {
         try {
             JsonNode envelope = objectMapper.readTree(record.value());
+            JsonNode eventId = envelope.get("eventId");
             JsonNode eventType = envelope.get("eventType");
-            if (eventType == null || !MESSAGE_SENT.equals(eventType.asString())) {
-                log.debug("Ignoring non-{} event on {}", MESSAGE_SENT, TOPIC);
-                return;
-            }
             JsonNode payload = envelope.get("payload");
-            if (payload == null || payload.isNull()) {
-                log.error("{} on {} carried no payload", MESSAGE_SENT, TOPIC);
+            if (eventId == null || eventId.isNull()
+                    || eventType == null || eventType.isNull()
+                    || payload == null || payload.isNull()) {
+                log.error("Discarding incomplete event from {}: {}", record.topic(), record.value());
                 return;
             }
-            fanOutService.fanOut(
-                    text(payload, "messageId"),
-                    text(payload, "roomId"),
-                    text(payload, "senderId"),
-                    text(payload, "type"),
-                    text(payload, "content"));
+            fanOutService.fanOut(eventId.asString(), eventType.asString(), payload);
         } catch (RuntimeException e) {
-            log.error("Failed to process event from {}: {}", TOPIC, record.value(), e);
+            log.error("Failed to process event from {}: {}", record.topic(), record.value(), e);
         }
-    }
-
-    private static String text(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        return value == null || value.isNull() ? null : value.asString();
     }
 }
