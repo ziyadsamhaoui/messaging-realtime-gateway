@@ -12,8 +12,18 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
   lifecycle:
     timeout-per-shutdown-phase: 20s
+
+badrlink:
+  kafka:
+    enabled: ${KAFKA_ENABLED:true}
 
 auth:
   jwks-uri: ${AUTH_JWKS_URI:http://messaging-auth-service:8081/oauth2/jwks}

@@ -38,7 +38,6 @@ public class RedisConfig {
             RedisRoomEventSubscriber subscriber) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        container.addMessageListener(subscriber, RedisChannels.messagesPatternTopic());
         container.addMessageListener(subscriber, RedisChannels.typingPatternTopic());
         return container;
     }
