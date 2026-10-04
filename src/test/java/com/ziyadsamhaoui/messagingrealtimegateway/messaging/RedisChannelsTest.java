@@ -7,28 +7,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RedisChannelsTest {
 
     @Test
-    void messageAndTypingPatternsDoNotOverlap() {
-        String messages = RedisChannels.messagesPatternTopic().getTopic();
+    void typingPatternMatchesOnlyTypingChannels() {
         String typing = RedisChannels.typingPatternTopic().getTopic();
 
-        assertThat(messages).isEqualTo("room:*:messages");
         assertThat(typing).isEqualTo("room:*:typing");
-
-        assertThat(matches(messages, "room:42:messages")).isTrue();
-        assertThat(matches(typing, "room:42:messages")).isFalse();
-
         assertThat(matches(typing, "room:42:typing")).isTrue();
-        assertThat(matches(messages, "room:42:typing")).as("typing must match exactly one pattern").isFalse();
+        assertThat(matches(typing, "room:42:messages")).isFalse();
     }
 
     @Test
-    void channelsAndDestinationsRoundTrip() {
-        assertThat(RedisChannels.messagesChannel("42")).isEqualTo("room:42:messages");
+    void typingChannelAndDestinationRoundTrip() {
         assertThat(RedisChannels.typingChannel("42")).isEqualTo("room:42:typing");
-
-        assertThat(RedisChannels.destinationForChannel("room:42:messages")).isEqualTo("/topic/rooms/42");
         assertThat(RedisChannels.destinationForChannel("room:42:typing")).isEqualTo("/topic/rooms/42/typing");
-
+        assertThat(RedisChannels.destinationForChannel("room:42:messages")).isNull();
         assertThat(RedisChannels.destinationForChannel("presence:user-1")).isNull();
         assertThat(RedisChannels.destinationForChannel(null)).isNull();
     }

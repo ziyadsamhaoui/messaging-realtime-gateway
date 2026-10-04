@@ -1,10 +1,11 @@
 package com.ziyadsamhaoui.messagingrealtimegateway;
 
+import com.ziyadsamhaoui.messagingrealtimegateway.service.MessageFanOutService;
 import com.ziyadsamhaoui.messagingrealtimegateway.support.AbstractIntegrationTest;
 import com.ziyadsamhaoui.messagingrealtimegateway.support.RedisFailureModeApp;
 import com.ziyadsamhaoui.messagingrealtimegateway.support.StompTestClient;
-import mockwebserver3.MockResponse;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -12,9 +13,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MultiInstanceFanoutTest extends AbstractIntegrationTest {
 
-    @Test
-    void sendOnInstanceADeliversToSubscriberOnInstanceB() throws Exception {
+    @Autowired
+    MessageFanOutService fanOutOnInstanceA;
 
+    private static StompTestClient subscriberOn(int port, String userId) throws InterruptedException {
+        StompTestClient client = new StompTestClient();
+        String token = TOKENS.mint(userId);
+        boolean connected = client.connect("ws://localhost:" + port + "/ws/websocket",
+                h -> h.add("Authorization", "Bearer " + token), 10);
+        assertThat(connected).as("subscriber on port " + port).isTrue();
+        client.subscribe("/topic/rooms/42");
+        Thread.sleep(250);
+        return client;
+    }
+
+    @Test
+    void deduplicationIsSharedAcrossInstancesSoEachEventBroadcastsOnce() throws Exception {
         int portA = port();
 
         try (ConfigurableApplicationContext instanceB = new SpringApplicationBuilder(RedisFailureModeApp.class)
@@ -28,34 +42,25 @@ class MultiInstanceFanoutTest extends AbstractIntegrationTest {
                         "upstream.user-service=" + USER.url("/"),
                         "upstream.user-service-internal-token=test-internal-token")
                 .run()) {
-            String portBProperty = instanceB.getEnvironment().getProperty("local.server.port");
-            int portB = portBProperty != null ? Integer.parseInt(portBProperty) : 0;
+            int portB = instanceB.getEnvironment().getProperty("local.server.port", Integer.class, 0);
             assertThat(portB).isPositive();
+            MessageFanOutService fanOutOnInstanceB = instanceB.getBean(MessageFanOutService.class);
 
-            CHAT.enqueue(chatRoomOk());
-            StompTestClient recipient = new StompTestClient();
-            String recipientToken = TOKENS.mint("recipient-on-b");
-            boolean connected = recipient.connect("ws://localhost:" + portB + "/ws/websocket",
-                    h -> h.add("Authorization", "Bearer " + recipientToken), 10);
-            assertThat(connected).as("recipient connected to instance B").isTrue();
-            recipient.subscribe("/topic/rooms/42");
+            StompTestClient subscriberA = subscriberOn(portA, "viewer-a");
+            StompTestClient subscriberB = subscriberOn(portB, "viewer-b");
 
-            CHAT.enqueue(new MockResponse.Builder().code(201).build());
-            StompTestClient sender = new StompTestClient();
-            String senderToken = TOKENS.mint("sender-on-a");
-            boolean senderConnected = sender.connect("ws://localhost:" + portA + "/ws/websocket",
-                    h -> h.add("Authorization", "Bearer " + senderToken), 10);
-            assertThat(senderConnected).as("sender connected to instance A").isTrue();
+            fanOutOnInstanceA.fanOut("cluster-event-1", "42", "sender", "TEXT", "hello from A");
+            assertThat(subscriberA.nextFrame("/topic/rooms/42", 10)).isNotNull();
+            assertThat(subscriberB.nextFrame("/topic/rooms/42", 1)).isNull();
 
-            sender.send("/app/chat.sendMessage",
-                    "{\"roomId\":\"42\",\"type\":\"TEXT\",\"content\":\"cross-instance hello\"}");
+            fanOutOnInstanceB.fanOut("cluster-event-1", "42", "sender", "TEXT", "redelivered on B");
+            assertThat(subscriberB.nextFrame("/topic/rooms/42", 1)).isNull();
 
-            String received = recipient.nextFrame("/topic/rooms/42", 10);
-            assertThat(received).isNotNull();
-            assertThat(received).contains("cross-instance hello");
+            fanOutOnInstanceB.fanOut("cluster-event-2", "42", "sender", "TEXT", "hello from B");
+            assertThat(subscriberB.nextFrame("/topic/rooms/42", 10)).isNotNull();
 
-            sender.close();
-            recipient.close();
+            subscriberA.close();
+            subscriberB.close();
         }
     }
 }

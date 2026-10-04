@@ -28,7 +28,7 @@ class MessageRelayTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void sendForwardsCallersOwnAuthorizationToChatAndPublishes() throws Exception {
+    void sendForwardsCallersOwnAuthorizationToChatWithoutLocalFanOut() throws Exception {
         try (StompTestClient client = connectedClient("sender-1")) {
             client.subscribe("/topic/rooms/42");
             client.send("/app/chat.sendMessage",
@@ -47,7 +47,9 @@ class MessageRelayTest extends AbstractIntegrationTest {
             assertThat(post.getHeaders().get("Authorization")).startsWith("Bearer ");
             assertThat(post.getBody().utf8()).contains("\"content\":\"hello\"");
 
-            assertThat(client.nextFrame("/topic/rooms/42", 5)).isNotNull();
+            assertThat(client.nextFrame("/topic/rooms/42", 1))
+                    .as("broadcast is decoupled from the HTTP completion handler")
+                    .isNull();
         }
     }
 
