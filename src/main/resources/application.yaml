@@ -26,13 +26,13 @@ badrlink:
     enabled: ${KAFKA_ENABLED:true}
 
 auth:
-  jwks-uri: ${AUTH_JWKS_URI:http://messaging-auth-service:8081/oauth2/jwks}
-  issuer: ${AUTH_ISSUER:http://messaging-auth-service:8081}
+  jwks-uri: ${AUTH_JWKS_URI:http://localhost:8081/oauth2/jwks}
+  issuer: ${AUTH_ISSUER:http://localhost:8081}
   audience: ${AUTH_AUDIENCE:messaging-api}
 
 upstream:
-  chat-service: ${UPSTREAM_CHAT_SERVICE:http://chat-service:8083}
-  user-service: ${UPSTREAM_USER_SERVICE:http://user-service:8082}
+  chat-service: ${UPSTREAM_CHAT_SERVICE:http://localhost:8083}
+  user-service: ${UPSTREAM_USER_SERVICE:http://localhost:8082}
   user-service-internal-token: ${USER_SERVICE_INTERNAL_TOKEN:}
 
 realtime:

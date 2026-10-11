@@ -36,6 +36,7 @@ public class PresenceService {
     public void onConnect(String userId) {
         localRefCounts.merge(userId, 1, Integer::sum);
         setPresence(userId);
+        userServiceClient.updateLastSeen(userId, Instant.now());
     }
 
     public void onHeartbeat(String userId) {
