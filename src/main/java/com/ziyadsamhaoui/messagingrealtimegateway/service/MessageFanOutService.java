@@ -11,6 +11,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class MessageFanOutService {
@@ -23,6 +25,7 @@ public class MessageFanOutService {
     public static final String MESSAGE_SENT = "MESSAGE_SENT";
     public static final String REACTION_ADDED = "REACTION_ADDED";
     public static final String MESSAGE_DELETED = "MESSAGE_DELETED";
+    public static final String MESSAGE_ATTACHMENTS_UPDATED = "MESSAGE_ATTACHMENTS_UPDATED";
     public static final String PARTICIPANT_ADDED = "PARTICIPANT_ADDED";
     public static final String PARTICIPANT_REMOVED = "PARTICIPANT_REMOVED";
     public static final String PARTICIPANT_MUTED = "PARTICIPANT_MUTED";
@@ -78,6 +81,12 @@ public class MessageFanOutService {
             case MESSAGE_DELETED -> broadcast(roomDestination(payload), new MessageDeletedFrame(
                     text(payload, "messageId"),
                     text(payload, "roomId")));
+            case MESSAGE_ATTACHMENTS_UPDATED -> broadcast(roomDestination(payload),
+                    new MessageAttachmentsUpdatedFrame(
+                            eventType,
+                            text(payload, "messageId"),
+                            text(payload, "roomId"),
+                            attachments(payload)));
             case PARTICIPANT_ADDED -> broadcast(roomDestination(payload), new ParticipantFrame(
                     eventType,
                     text(payload, "roomId"),
@@ -186,6 +195,20 @@ public class MessageFanOutService {
         return value == null || value.isNull() ? null : value.asBoolean();
     }
 
+    private static List<String> attachments(JsonNode node) {
+        JsonNode value = node.get("attachmentIds");
+        if (value == null || !value.isArray()) {
+            return List.of();
+        }
+        List<String> ids = new ArrayList<>();
+        value.forEach(entry -> {
+            if (entry != null && !entry.isNull()) {
+                ids.add(entry.asString());
+            }
+        });
+        return ids;
+    }
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record RoomMessageFrame(String messageId, String senderId, String type, String content, String createdAt) {
     }
@@ -196,6 +219,11 @@ public class MessageFanOutService {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record MessageDeletedFrame(String messageId, String roomId) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record MessageAttachmentsUpdatedFrame(String eventType, String messageId, String roomId,
+                                                 List<String> attachmentIds) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

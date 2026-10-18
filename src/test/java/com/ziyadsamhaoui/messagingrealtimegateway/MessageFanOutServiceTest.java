@@ -72,6 +72,24 @@ class MessageFanOutServiceTest {
     }
 
     @Test
+    void attachmentUpdateIsBroadcastToTheRoomTopic() {
+        when(values.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
+
+        service.fanOut("evt-2", "MESSAGE_ATTACHMENTS_UPDATED", payload("""
+                {"messageId":"m1","roomId":"42","attachmentIds":["a1","a2"]}
+                """));
+
+        ArgumentCaptor<String> destination = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object> frame = ArgumentCaptor.forClass(Object.class);
+        verify(messagingTemplate).convertAndSend(destination.capture(), frame.capture());
+        assertThat(destination.getValue()).isEqualTo("/topic/rooms/42");
+        assertThat(frame.getValue().toString())
+                .contains("\"eventType\":\"MESSAGE_ATTACHMENTS_UPDATED\"")
+                .contains("\"messageId\":\"m1\"")
+                .contains("\"attachmentIds\":[\"a1\",\"a2\"]");
+    }
+
+    @Test
     void losingClaimIsSkippedWithoutBroadcast() {
         when(values.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true, false);
 
