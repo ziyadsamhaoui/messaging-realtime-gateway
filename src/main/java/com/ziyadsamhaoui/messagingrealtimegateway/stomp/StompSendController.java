@@ -4,15 +4,27 @@ import com.ziyadsamhaoui.messagingrealtimegateway.dto.Dtos;
 import com.ziyadsamhaoui.messagingrealtimegateway.exception.ErrorCode;
 import com.ziyadsamhaoui.messagingrealtimegateway.service.MessageRelayService;
 import com.ziyadsamhaoui.messagingrealtimegateway.service.TypingRelayService;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
 
 @Controller
 public class StompSendController {
+
+    /**
+     * A STOMP frame is not an HTTP request: the agent's server span covers the WebSocket
+     * handshake only, so the send itself needs its own span to keep the outbound call to Chat
+     * attached to the operation the user actually performed.
+     */
+    private static final Tracer TRACER = GlobalOpenTelemetry.get()
+            .getTracer("com.ziyadsamhaoui.messagingrealtimegateway");
 
     private final MessageRelayService messageRelayService;
     private final TypingRelayService typingRelayService;
@@ -26,10 +38,24 @@ public class StompSendController {
     @MessageMapping("/chat.sendMessage")
     public void sendMessage(@Payload Dtos.SendMessageRequest request, Principal principal) {
         requireAuthenticated(principal);
-        String token = (principal instanceof JwtPrincipal jwtPrincipal) ? jwtPrincipal.tokenValue() : null;
 
-        String authorization = token != null ? "Bearer " + token : null;
-        messageRelayService.relay(principal.getName(), authorization, request);
+        Span span = TRACER.spanBuilder("stomp.send")
+                .setAttribute("messaging.system", "stomp")
+                .setAttribute("messaging.destination.name", "/chat.sendMessage")
+                .setAttribute("messaging.operation", "send")
+                .setAttribute("chat.room.id", request.roomId())
+                .startSpan();
+        try (Scope scope = span.makeCurrent()) {
+            String token = (principal instanceof JwtPrincipal jwtPrincipal) ? jwtPrincipal.tokenValue() : null;
+            String authorization = token != null ? "Bearer " + token : null;
+            messageRelayService.relay(principal.getName(), authorization, request);
+        } catch (RuntimeException exception) {
+            span.recordException(exception);
+            span.setStatus(StatusCode.ERROR, String.valueOf(exception.getMessage()));
+            throw exception;
+        } finally {
+            span.end();
+        }
     }
 
     @MessageMapping("/chat.typing")
