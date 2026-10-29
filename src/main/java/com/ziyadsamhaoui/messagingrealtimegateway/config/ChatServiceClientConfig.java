@@ -4,7 +4,8 @@ import tools.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -26,9 +27,14 @@ public class ChatServiceClientConfig {
                 .build();
     }
 
-    static SimpleClientHttpRequestFactory clientHttpRequestFactory(int connectTimeoutMs, int readTimeoutMs) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
+    // JdkClientHttpRequestFactory, not SimpleClientHttpRequestFactory: the latter is backed by
+    // HttpURLConnection, which rejects PATCH (used for the user-service last-seen update) with
+    // "Invalid HTTP method: PATCH".
+    static ClientHttpRequestFactory clientHttpRequestFactory(int connectTimeoutMs, int readTimeoutMs) {
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
+                java.net.http.HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofMillis(connectTimeoutMs))
+                        .build());
         factory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
         return factory;
     }

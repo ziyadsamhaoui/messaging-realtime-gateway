@@ -26,7 +26,7 @@ public class RateLimitService {
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
 
     private final RedisClient lettuceClient;
-    private final ProxyManager<byte[]> proxyManager;
+    private volatile ProxyManager<byte[]> proxyManager;
     private final BucketConfiguration messageConfig;
     private final BucketConfiguration typingConfig;
     private final Counter messageRejections;
@@ -45,7 +45,6 @@ public class RateLimitService {
         this.lettuceClient = (password != null && !password.isBlank())
                 ? RedisClient.create("redis://:" + password + "@" + host + ":" + port)
                 : RedisClient.create("redis://" + host + ":" + port);
-        this.proxyManager = LettuceBasedProxyManager.builderFor(lettuceClient).build();
 
         this.messageConfig = bucketConfig(messageReplenish, messageBurst);
         this.typingConfig = bucketConfig(typingReplenish, typingBurst);
@@ -103,10 +102,27 @@ public class RateLimitService {
         return outcome;
     }
 
+    // LettuceBasedProxyManager.builderFor() opens a connection immediately, so building it in the
+    // constructor makes a Redis outage a startup failure. Build it on first use instead: the
+    // gateway keeps running and message sends fail closed until Redis is reachable again.
+    private ProxyManager<byte[]> proxyManager() {
+        ProxyManager<byte[]> manager = proxyManager;
+        if (manager == null) {
+            synchronized (this) {
+                manager = proxyManager;
+                if (manager == null) {
+                    manager = LettuceBasedProxyManager.builderFor(lettuceClient).build();
+                    proxyManager = manager;
+                }
+            }
+        }
+        return manager;
+    }
+
     private Outcome tryConsume(String key, BucketConfiguration config, boolean failClosed) {
         try {
             io.github.bucket4j.distributed.BucketProxy bucket =
-                    proxyManager.builder().build(key.getBytes(StandardCharsets.UTF_8), config);
+                    proxyManager().builder().build(key.getBytes(StandardCharsets.UTF_8), config);
             return bucket.tryConsume(1) ? Outcome.ALLOWED : Outcome.REJECTED;
         } catch (Exception e) {
             log.debug("Rate-limit check unavailable for key {} (failing {}): {}",

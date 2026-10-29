@@ -100,6 +100,9 @@ public class StompTestClient implements AutoCloseable {
     }
 
     public void subscribe(String destination) {
+        // Register the queue up-front: frames can arrive before the first assertion runs, and
+        // nextFrame must be able to wait for one instead of reporting "nothing yet" as null.
+        frames.computeIfAbsent(destination, d -> new LinkedBlockingQueue<>());
         session.get().subscribe(destination, new StompFrameHandler() {
             @Override
             public Type getPayloadType(StompHeaders headers) {
@@ -133,8 +136,8 @@ public class StompTestClient implements AutoCloseable {
     }
 
     public String nextFrame(String destination, long timeoutSeconds) throws InterruptedException {
-        BlockingQueue<String> queue = frames.get(destination);
-        return queue == null ? null : queue.poll(timeoutSeconds, TimeUnit.SECONDS);
+        BlockingQueue<String> queue = frames.computeIfAbsent(destination, d -> new LinkedBlockingQueue<>());
+        return queue.poll(timeoutSeconds, TimeUnit.SECONDS);
     }
 
     public boolean awaitError(long timeoutSeconds) throws InterruptedException {

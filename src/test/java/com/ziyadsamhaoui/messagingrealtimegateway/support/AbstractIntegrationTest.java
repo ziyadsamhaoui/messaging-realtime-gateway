@@ -45,6 +45,7 @@ public abstract class AbstractIntegrationTest {
             AUTH.start();
             CHAT.setDispatcher(new ChatDispatcher());
             CHAT.start();
+            USER.setDispatcher(new OkByDefaultDispatcher());
             USER.start();
         } catch (IOException e) {
             throw new IllegalStateException(e);
@@ -98,6 +99,27 @@ public abstract class AbstractIntegrationTest {
         }
     }
 
+    /**
+     * The user service is called for last-seen PATCHes on every connect and disconnect. The default
+     * mock dispatcher blocks until a response is enqueued, which turns every presence update into a
+     * multi-second timeout, so answer 200 unless a test queued something specific.
+     */
+    static class OkByDefaultDispatcher extends QueueDispatcher {
+
+        private final BlockingQueue<MockResponse> queued = new LinkedBlockingQueue<>();
+
+        @Override
+        public void enqueue(MockResponse response) {
+            queued.add(response);
+        }
+
+        @Override
+        public MockResponse dispatch(RecordedRequest request) {
+            MockResponse enqueued = queued.poll();
+            return enqueued != null ? enqueued : new MockResponse.Builder().code(200).build();
+        }
+    }
+
     public static void scriptChat(String methodAndPath, Supplier<MockResponse> response) {
         CHAT_SCRIPTS.put(methodAndPath, response);
     }
@@ -136,8 +158,21 @@ public abstract class AbstractIntegrationTest {
     }
 
     @AfterEach
-    void cleanupScripts() {
+    void cleanupScripts() throws InterruptedException {
         clearChatScripts();
+        drainRecordedRequests();
+    }
+
+    /**
+     * The mock servers are static and shared by every test in the JVM, so requests recorded by one
+     * test would otherwise be counted by the next one's assertions.
+     */
+    private static void drainRecordedRequests() throws InterruptedException {
+        for (MockWebServer server : new MockWebServer[]{AUTH, CHAT, USER}) {
+            while (server.takeRequest(10, java.util.concurrent.TimeUnit.MILLISECONDS) != null) {
+                // discard
+            }
+        }
     }
 
     public static MockResponse chatRoomOk() {

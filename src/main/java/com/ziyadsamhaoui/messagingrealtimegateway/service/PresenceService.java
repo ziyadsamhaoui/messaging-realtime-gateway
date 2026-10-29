@@ -44,11 +44,16 @@ public class PresenceService {
     }
 
     public void onDisconnect(String userId) {
-        int remaining = localRefCounts.merge(userId, -1, Integer::sum);
-        if (remaining > 0) {
+        Integer openSessions = localRefCounts.get(userId);
+        if (openSessions == null) {
+            // Duplicate SessionDisconnectEvent for a session we already cleaned up.
             return;
         }
-        localRefCounts.remove(userId);
+        if (openSessions > 1) {
+            localRefCounts.put(userId, openSessions - 1);
+            return;
+        }
+        localRefCounts.remove(userId, openSessions);
         deletePresence(userId);
         userServiceClient.updateLastSeen(userId, Instant.now());
     }

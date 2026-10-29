@@ -18,18 +18,19 @@ class RedisFailureModeTest extends AbstractIntegrationTest {
     @Test
     void messageSendFailsClosedWhenRateLimiterIsUnavailable() {
 
+        // Command-line args, not builder.properties(): the latter are only default properties and
+        // application.yaml would win, pointing the child at the real Redis and auth service.
         org.springframework.boot.builder.SpringApplicationBuilder app =
-                new org.springframework.boot.builder.SpringApplicationBuilder(RedisFailureModeApp.class)
-                        .properties(
-                                "server.port=0",
-                                "spring.data.redis.host=127.0.0.1",
-                                "spring.data.redis.port=1",
-                                "auth.jwks-uri=" + AUTH.url("/oauth2/jwks"),
-                                "auth.issuer=http://localhost:8081",
-                                "upstream.chat-service=" + CHAT.url("/"),
-                                "upstream.user-service=" + USER.url("/"),
-                                "upstream.user-service-internal-token=test-internal-token");
-        try (org.springframework.context.ConfigurableApplicationContext dead = app.run()) {
+                new org.springframework.boot.builder.SpringApplicationBuilder(RedisFailureModeApp.class);
+        try (org.springframework.context.ConfigurableApplicationContext dead = app.run(
+                "--server.port=0",
+                "--spring.data.redis.host=127.0.0.1",
+                "--spring.data.redis.port=1",
+                "--auth.jwks-uri=" + AUTH.url("/oauth2/jwks"),
+                "--auth.issuer=http://localhost:8081",
+                "--upstream.chat-service=" + CHAT.url("/"),
+                "--upstream.user-service=" + USER.url("/"),
+                "--upstream.user-service-internal-token=test-internal-token")) {
             com.ziyadsamhaoui.messagingrealtimegateway.service.RateLimitService rateLimiter =
                     dead.getBean(com.ziyadsamhaoui.messagingrealtimegateway.service.RateLimitService.class);
 
@@ -42,17 +43,16 @@ class RedisFailureModeTest extends AbstractIntegrationTest {
     void presenceWriteFailureDoesNotDropConnectionOrSend() {
 
         org.springframework.boot.builder.SpringApplicationBuilder app =
-                new org.springframework.boot.builder.SpringApplicationBuilder(RedisFailureModeApp.class)
-                        .properties(
-                                "server.port=0",
-                                "spring.data.redis.host=127.0.0.1",
-                                "spring.data.redis.port=1",
-                                "auth.jwks-uri=" + AUTH.url("/oauth2/jwks"),
-                                "auth.issuer=http://localhost:8081",
-                                "upstream.chat-service=" + CHAT.url("/"),
-                                "upstream.user-service=" + USER.url("/"),
-                                "upstream.user-service-internal-token=test-internal-token");
-        try (org.springframework.context.ConfigurableApplicationContext dead = app.run()) {
+                new org.springframework.boot.builder.SpringApplicationBuilder(RedisFailureModeApp.class);
+        try (org.springframework.context.ConfigurableApplicationContext dead = app.run(
+                "--server.port=0",
+                "--spring.data.redis.host=127.0.0.1",
+                "--spring.data.redis.port=1",
+                "--auth.jwks-uri=" + AUTH.url("/oauth2/jwks"),
+                "--auth.issuer=http://localhost:8081",
+                "--upstream.chat-service=" + CHAT.url("/"),
+                "--upstream.user-service=" + USER.url("/"),
+                "--upstream.user-service-internal-token=test-internal-token")) {
             int port = dead.getEnvironment().getProperty("local.server.port", Integer.class, 0);
             if (port == 0) {
                 port = dead.getEnvironment().getProperty("local.server.port", Integer.class);

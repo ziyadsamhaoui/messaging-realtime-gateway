@@ -44,7 +44,8 @@ public class UserServiceClient {
                     .body(new Dtos.LastSeenRequest(seenAt))
                     .retrieve()
                     .toBodilessEntity();
-        } catch (org.springframework.web.client.HttpClientErrorException e) {
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            // Covers 4xx and 5xx: the user service answered, so repeating the same PATCH is pointless.
             log.debug("User rejected last-seen PATCH for {} ({}): not retrying", userId, e.getStatusCode());
         } catch (Exception e) {
             if (mayRetry) {

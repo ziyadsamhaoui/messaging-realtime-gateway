@@ -44,17 +44,18 @@ class MultiInstanceFanoutTest extends AbstractIntegrationTest {
     void deduplicationIsSharedAcrossInstancesSoEachEventBroadcastsOnce() throws Exception {
         int portA = port();
 
+        // Command-line args, not builder.properties(): the latter are only default properties and
+        // application.yaml would win, pointing instance B at the real Redis and auth service.
         try (ConfigurableApplicationContext instanceB = new SpringApplicationBuilder(RedisFailureModeApp.class)
-                .properties(
-                        "server.port=0",
-                        "spring.data.redis.host=" + REDIS.getHost(),
-                        "spring.data.redis.port=" + REDIS.getMappedPort(6379),
-                        "auth.jwks-uri=" + AUTH.url("/oauth2/jwks"),
-                        "auth.issuer=http://localhost:8081",
-                        "upstream.chat-service=" + CHAT.url("/"),
-                        "upstream.user-service=" + USER.url("/"),
-                        "upstream.user-service-internal-token=test-internal-token")
-                .run()) {
+                .run(
+                        "--server.port=0",
+                        "--spring.data.redis.host=" + REDIS.getHost(),
+                        "--spring.data.redis.port=" + REDIS.getMappedPort(6379),
+                        "--auth.jwks-uri=" + AUTH.url("/oauth2/jwks"),
+                        "--auth.issuer=http://localhost:8081",
+                        "--upstream.chat-service=" + CHAT.url("/"),
+                        "--upstream.user-service=" + USER.url("/"),
+                        "--upstream.user-service-internal-token=test-internal-token")) {
             int portB = instanceB.getEnvironment().getProperty("local.server.port", Integer.class, 0);
             assertThat(portB).isPositive();
             MessageFanOutService fanOutOnInstanceB = instanceB.getBean(MessageFanOutService.class);
