@@ -27,9 +27,6 @@ public class ChatServiceClientConfig {
                 .build();
     }
 
-    // JdkClientHttpRequestFactory, not SimpleClientHttpRequestFactory: the latter is backed by
-    // HttpURLConnection, which rejects PATCH (used for the user-service last-seen update) with
-    // "Invalid HTTP method: PATCH".
     static ClientHttpRequestFactory clientHttpRequestFactory(int connectTimeoutMs, int readTimeoutMs) {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
                 java.net.http.HttpClient.newBuilder()

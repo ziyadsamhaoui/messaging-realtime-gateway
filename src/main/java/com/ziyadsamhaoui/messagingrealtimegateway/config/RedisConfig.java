@@ -41,9 +41,6 @@ public class RedisConfig {
     public RedisMessageListenerContainer redisMessageListenerContainer(
             RedisConnectionFactory connectionFactory,
             RedisRoomEventSubscriber subscriber) {
-        // Subscribing happens on start(), which blocks and throws while Redis is unreachable. The
-        // container keeps retrying with its recovery backoff, so a failed bootstrap must not abort
-        // the whole gateway: typing fan-out simply resumes once Redis is back.
         RedisMessageListenerContainer container = new RedisMessageListenerContainer() {
             @Override
             public void start() {

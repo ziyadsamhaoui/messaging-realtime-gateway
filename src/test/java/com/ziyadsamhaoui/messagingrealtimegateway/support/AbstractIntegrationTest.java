@@ -99,11 +99,6 @@ public abstract class AbstractIntegrationTest {
         }
     }
 
-    /**
-     * The user service is called for last-seen PATCHes on every connect and disconnect. The default
-     * mock dispatcher blocks until a response is enqueued, which turns every presence update into a
-     * multi-second timeout, so answer 200 unless a test queued something specific.
-     */
     static class OkByDefaultDispatcher extends QueueDispatcher {
 
         private final BlockingQueue<MockResponse> queued = new LinkedBlockingQueue<>();
@@ -163,14 +158,9 @@ public abstract class AbstractIntegrationTest {
         drainRecordedRequests();
     }
 
-    /**
-     * The mock servers are static and shared by every test in the JVM, so requests recorded by one
-     * test would otherwise be counted by the next one's assertions.
-     */
     private static void drainRecordedRequests() throws InterruptedException {
         for (MockWebServer server : new MockWebServer[]{AUTH, CHAT, USER}) {
             while (server.takeRequest(10, java.util.concurrent.TimeUnit.MILLISECONDS) != null) {
-                // discard
             }
         }
     }

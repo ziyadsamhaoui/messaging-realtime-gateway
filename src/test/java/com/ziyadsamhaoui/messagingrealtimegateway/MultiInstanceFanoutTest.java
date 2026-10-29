@@ -44,8 +44,6 @@ class MultiInstanceFanoutTest extends AbstractIntegrationTest {
     void deduplicationIsSharedAcrossInstancesSoEachEventBroadcastsOnce() throws Exception {
         int portA = port();
 
-        // Command-line args, not builder.properties(): the latter are only default properties and
-        // application.yaml would win, pointing instance B at the real Redis and auth service.
         try (ConfigurableApplicationContext instanceB = new SpringApplicationBuilder(RedisFailureModeApp.class)
                 .run(
                         "--server.port=0",

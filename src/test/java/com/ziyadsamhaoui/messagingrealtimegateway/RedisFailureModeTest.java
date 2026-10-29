@@ -18,8 +18,6 @@ class RedisFailureModeTest extends AbstractIntegrationTest {
     @Test
     void messageSendFailsClosedWhenRateLimiterIsUnavailable() {
 
-        // Command-line args, not builder.properties(): the latter are only default properties and
-        // application.yaml would win, pointing the child at the real Redis and auth service.
         org.springframework.boot.builder.SpringApplicationBuilder app =
                 new org.springframework.boot.builder.SpringApplicationBuilder(RedisFailureModeApp.class);
         try (org.springframework.context.ConfigurableApplicationContext dead = app.run(

@@ -42,8 +42,6 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // Actuator runs on its own, unpublished management port. Listing it explicitly
-                // keeps the intent visible even though every request is currently permitted.
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/actuator/**").permitAll()
                         .anyRequest().permitAll());
         return http.build();

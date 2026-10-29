@@ -22,24 +22,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Consumer lag per topic for this service's consumer group.
- *
- * <p>Spring Boot already publishes the Kafka client's own metrics, but they are tagged with the
- * client id only: neither the topic nor the consumer group can be recovered from them, which
- * makes them useless for "which topic is falling behind" questions. This gauge fills that gap
- * with the admin API, reading the group's committed offsets and the partitions' end offsets.
- *
- * <p>The value is refreshed on a schedule and cached; a failed refresh keeps the previous value
- * rather than reporting zero, because zero would look healthy.
- */
 @Component
 @ConditionalOnProperty(prefix = "badrlink.kafka", name = "enabled", havingValue = "true")
 public class KafkaConsumerLagMetrics {
 
     static final String LAG_METRIC = "badrlink.kafka.consumer.lag";
 
-    // This module does not use Lombok, so the logger is declared explicitly.
     private static final Logger log = LoggerFactory.getLogger(KafkaConsumerLagMetrics.class);
 
     private static final long ADMIN_TIMEOUT_SECONDS = 10;
@@ -90,7 +78,6 @@ public class KafkaConsumerLagMetrics {
             Thread.currentThread().interrupt();
             log.debug("consumer lag refresh interrupted");
         } catch (Exception ex) {
-            // Keep the previous values; a broker hiccup is not "zero lag".
             log.debug("could not refresh consumer lag for group {}: {}", groupId, ex.getMessage());
         }
     }

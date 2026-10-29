@@ -5,13 +5,6 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
-/**
- * Number of STOMP sessions this instance currently holds.
- *
- * <p>The value is read from the registry at scrape time instead of being counted on connect and
- * disconnect: the registry is already the single source of truth, and a counter updated in two
- * places would drift whenever a disconnect is missed.
- */
 @Component
 public class StompConnectionMetrics {
 

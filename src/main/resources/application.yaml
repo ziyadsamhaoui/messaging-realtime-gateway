@@ -2,8 +2,6 @@ server:
   port: ${SERVER_PORT:8084}
   shutdown: graceful
 
-# Actuator is served on its own port: Prometheus scrapes it over the Docker network,
-# while the application port keeps the existing security configuration untouched.
 management:
   server:
     port: ${MANAGEMENT_PORT:9090}
@@ -16,7 +14,6 @@ management:
       probes:
         enabled: true
       show-details: never
-      # Readiness covers Redis (presence, dedup, rate limits); liveness stays on readinessState.
       group:
         readiness:
           include: readinessState,redis
@@ -71,9 +68,6 @@ realtime:
   connect-timeout-ms: 3000
   read-timeout-ms: 3000
 
-# Structured JSON logs. The OpenTelemetry agent puts trace_id/span_id into the MDC, and
-# Boot's logstash format writes the MDC into the JSON object, so no custom encoder is
-# needed and the trace context also survives Kafka consumer threads.
 logging:
   level:
     com.ziyadsamhaoui.messagingrealtimegateway: INFO

@@ -46,7 +46,6 @@ public class PresenceService {
     public void onDisconnect(String userId) {
         Integer openSessions = localRefCounts.get(userId);
         if (openSessions == null) {
-            // Duplicate SessionDisconnectEvent for a session we already cleaned up.
             return;
         }
         if (openSessions > 1) {

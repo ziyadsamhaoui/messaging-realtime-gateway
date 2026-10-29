@@ -49,8 +49,6 @@ public class RateLimitService {
         this.messageConfig = bucketConfig(messageReplenish, messageBurst);
         this.typingConfig = bucketConfig(typingReplenish, typingBurst);
 
-        // Two separate counters: a spike on the message limit is a very different incident
-        // from typing being throttled, and one merged metric would hide which limit is hit.
         this.messageRejections = rejectionCounter(meterRegistry, "message");
         this.typingRejections = rejectionCounter(meterRegistry, "typing");
     }
@@ -102,9 +100,6 @@ public class RateLimitService {
         return outcome;
     }
 
-    // LettuceBasedProxyManager.builderFor() opens a connection immediately, so building it in the
-    // constructor makes a Redis outage a startup failure. Build it on first use instead: the
-    // gateway keeps running and message sends fail closed until Redis is reachable again.
     private ProxyManager<byte[]> proxyManager() {
         ProxyManager<byte[]> manager = proxyManager;
         if (manager == null) {

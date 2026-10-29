@@ -18,11 +18,6 @@ import java.security.Principal;
 @Controller
 public class StompSendController {
 
-    /**
-     * A STOMP frame is not an HTTP request: the agent's server span covers the WebSocket
-     * handshake only, so the send itself needs its own span to keep the outbound call to Chat
-     * attached to the operation the user actually performed.
-     */
     private static final Tracer TRACER = GlobalOpenTelemetry.get()
             .getTracer("com.ziyadsamhaoui.messagingrealtimegateway");
 

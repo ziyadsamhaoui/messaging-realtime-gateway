@@ -100,8 +100,6 @@ public class StompTestClient implements AutoCloseable {
     }
 
     public void subscribe(String destination) {
-        // Register the queue up-front: frames can arrive before the first assertion runs, and
-        // nextFrame must be able to wait for one instead of reporting "nothing yet" as null.
         frames.computeIfAbsent(destination, d -> new LinkedBlockingQueue<>());
         session.get().subscribe(destination, new StompFrameHandler() {
             @Override
